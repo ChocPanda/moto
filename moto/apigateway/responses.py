@@ -4,6 +4,7 @@ import json
 
 from moto.core.responses import BaseResponse
 from .models import apigateway_backends
+from utils import deserialise_body
 from .exceptions import (
     ApiKeyNotFoundException,
     BadRequestException,
@@ -43,9 +44,13 @@ class APIGatewayResponse(BaseResponse):
             apis = self.backend.list_apis()
             return 200, {}, json.dumps({"item": [api.to_dict() for api in apis]})
         elif self.method == "POST":
-            name = self._get_param("name")
-            description = self._get_param("description")
-            rest_api = self.backend.create_rest_api(name, description)
+            content_type = self.headers.get("Content-Type", None)
+            api_doc = deserialise_body(self.body, content_type)
+
+            name = api_doc["info"]["title"]
+
+            rest_api = self.backend.create_rest_api(name, None)
+            rest_api.put_rest_api(api_doc)
             return 200, {}, json.dumps(rest_api.to_dict())
 
     def restapis_individual(self, request, full_url, headers):
@@ -57,6 +62,17 @@ class APIGatewayResponse(BaseResponse):
             return 200, {}, json.dumps(rest_api.to_dict())
         elif self.method == "DELETE":
             rest_api = self.backend.delete_rest_api(function_id)
+            return 200, {}, json.dumps(rest_api.to_dict())
+        elif self.method == "PUT":
+            mode = self._get_param_with_default_value("mode", "merge")
+            fail_on_warnings = self._get_param_with_default_value(
+                "fail_on_warnings", False
+            )
+
+            content_type = self.headers.get("Content-Type", None)
+            api_doc = deserialise_body(self.body, content_type)
+
+            rest_api = self.backend.put_rest_api(api_doc, mode, fail_on_warnings)
             return 200, {}, json.dumps(rest_api.to_dict())
 
     def resources(self, request, full_url, headers):
